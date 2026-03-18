@@ -53,6 +53,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
 
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r28
+          add-to-path: true
+
       - name: Build Linux Static Binary
         run: |
           mkdir -p dist
@@ -67,13 +74,19 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o ../../dist/agtop-linux-armv7
 
       - name: Build Android Static Binary
+        env:
+          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          # aarch64 (requires CGO for external linking)
+          # aarch64
           cd cmd/agtop/
-          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=android GOARCH=arm64 go build -ldflags="-s -w" -o ../../dist/agtop-android-aarch64
+          CC=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang \
+          CXX=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang++ \
+          CGO_ENABLED=1 GOOS=android GOARCH=arm64 go build -ldflags="-s -w" -o ../../dist/agtop-android-aarch64
 
-          # armv7 (requires CGO for external linking)
-          CC=arm-linux-gnueabihf-gcc CGO_ENABLED=1 GOOS=android GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o ../../dist/agtop-android-armv7
+          # armv7
+          CC=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi33-clang \
+          CXX=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi33-clang++ \
+          CGO_ENABLED=1 GOOS=android GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o ../../dist/agtop-android-armv7
 
       - name: Generate Changelog
         uses: orhun/git-cliff-action@v4
