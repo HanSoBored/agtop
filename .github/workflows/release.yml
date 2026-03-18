@@ -48,6 +48,11 @@ jobs:
         with:
           go-version: '1.25'
 
+      - name: Install Cross-Compiler Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
+
       - name: Build Linux Static Binary
         run: |
           mkdir -p dist
@@ -55,20 +60,20 @@ jobs:
           cd cmd/agtop/
           go build -ldflags="-s -w" -o ../../dist/agtop-linux-x86_64
 
-          # aarch64
+          # aarch64 (static, no CGO)
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o ../../dist/agtop-linux-aarch64
 
-          # armv7
+          # armv7 (static, no CGO)
           CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o ../../dist/agtop-linux-armv7
 
       - name: Build Android Static Binary
         run: |
-          # aarch64
+          # aarch64 (requires CGO for external linking)
           cd cmd/agtop/
-          CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -ldflags="-s -w" -o ../../dist/agtop-android-aarch64
+          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=android GOARCH=arm64 go build -ldflags="-s -w" -o ../../dist/agtop-android-aarch64
 
-          # armv7
-          CGO_ENABLED=0 GOOS=android GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o ../../dist/agtop-android-armv7
+          # armv7 (requires CGO for external linking)
+          CC=arm-linux-gnueabihf-gcc CGO_ENABLED=1 GOOS=android GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o ../../dist/agtop-android-armv7
 
       - name: Generate Changelog
         uses: orhun/git-cliff-action@v4
