@@ -8,6 +8,23 @@ BINARY_BASE_NAME="agtop"
 FINAL_NAME="agtop"
 INSTALL_DIR="/usr/local/bin"
 
+# --- DETECT TERMUX / ADB ---
+IS_TERMUX=false
+IS_ADB=false
+TEMP_DIR="/tmp"
+
+if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+    IS_TERMUX=true
+    INSTALL_DIR="/data/data/com.termux/files/usr/bin"
+    TEMP_DIR="$HOME"
+    echo "📱 Termux detected"
+elif [ -d "/data/local/tmp" ] && [ ! -d "/data/data/com.termux" ]; then
+    IS_ADB=true
+    INSTALL_DIR="/data/local/tmp"
+    TEMP_DIR="/data/local/tmp"
+    echo "🔌 ADB environment detected"
+fi
+
 # --- DETECT SYSTEM ---
 OS="$(uname -s)"
 ARCH="$(uname -m)"
@@ -17,15 +34,15 @@ echo "   OS: $OS"
 echo "   Arch: $ARCH"
 
 SUFFIX=""
-PLATFORM=""
 
 # 1. DETECT OS & MAP ARCHITECTURE
 if [ "$OS" = "Linux" ]; then
-    # Check if running on Android (has Android-specific properties)
-    if [ -f "/system/bin/app_process" ] || grep -q "Android" /proc/version 2>/dev/null; then
-        PLATFORM="android"
+    # Check for Android (Termux) first
+    if [ -d "/system/bin" ] || [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
         if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
             SUFFIX="android-aarch64"
+        elif [ "$ARCH" = "x86_64" ]; then
+            SUFFIX="android-x86_64"
         elif [[ "$ARCH" == armv7* ]] || [ "$ARCH" = "arm" ]; then
             SUFFIX="android-armv7"
         else
@@ -33,7 +50,7 @@ if [ "$OS" = "Linux" ]; then
             exit 1
         fi
     else
-        PLATFORM="linux"
+        # Standard Linux
         if [ "$ARCH" = "x86_64" ]; then
             SUFFIX="linux-x86_64"
         elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
@@ -46,10 +63,10 @@ if [ "$OS" = "Linux" ]; then
         fi
     fi
 elif [ "$OS" = "Darwin" ]; then
-    PLATFORM="darwin"
     if [ "$ARCH" = "x86_64" ]; then
         SUFFIX="darwin-x86_64"
     elif [ "$ARCH" = "arm64" ]; then
+        # macOS returns 'arm64' for M1/M2, but we named the file 'aarch64'
         SUFFIX="darwin-aarch64"
     else
         echo "❌ Unsupported Architecture: $ARCH on macOS"
@@ -70,21 +87,21 @@ DOWNLOAD_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest/download
 # Use curl to download to temp folder
 # -L follows redirects
 # -f fails silently on server error (404) so we can catch it
-if ! curl -f -L -o "/tmp/$BINARY_BASE_NAME" "$DOWNLOAD_URL"; then
+if ! curl -f -L -o "$TEMP_DIR/$BINARY_BASE_NAME" "$DOWNLOAD_URL"; then
     echo "❌ Error: Failed to download. The release asset '$TARGET_FILE' might not exist yet."
     exit 1
 fi
 
 # --- INSTALLING ---
 echo "📦 Installing to $INSTALL_DIR..."
-chmod +x "/tmp/$BINARY_BASE_NAME"
+chmod +x "$TEMP_DIR/$BINARY_BASE_NAME"
 
 # Check write permissions
 if [ -w "$INSTALL_DIR" ]; then
-    mv "/tmp/$BINARY_BASE_NAME" "$INSTALL_DIR/$FINAL_NAME"
+    mv "$TEMP_DIR/$BINARY_BASE_NAME" "$INSTALL_DIR/$FINAL_NAME"
 else
     echo "🔑 Sudo permission required to move binary to $INSTALL_DIR"
-    sudo mv "/tmp/$BINARY_BASE_NAME" "$INSTALL_DIR/$FINAL_NAME"
+    sudo mv "$TEMP_DIR/$BINARY_BASE_NAME" "$INSTALL_DIR/$FINAL_NAME"
 fi
 
 echo "✅ Installed successfully!"
