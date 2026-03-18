@@ -22,7 +22,7 @@ jobs:
       - name: Get version
         id: get_version
         run: |
-          VERSION=$(cat VERSION | tr -d '[:space:]')
+          VERSION=$(cat VERSION | tr -d '[:space:]' | sed 's/^v//')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
       - name: Check Tag
         id: check_tag
