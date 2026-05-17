@@ -1,6 +1,11 @@
 package providers
 
-import "os/exec"
+import (
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
+)
 
 // GPUStats holds all GPU statistics (shared across all providers)
 type GPUStats struct {
@@ -15,14 +20,14 @@ type GPUStats struct {
 	OpenGLESVersion string
 
 	// Clocks & Usage
-	CurrentClock    int
-	TargetClock     int
-	MinClock        string
-	MaxClock        string
-	BusyPercentage  int
-	GpuBusyPercent  int
-	DevfreqLoad     int
-	Temperature     string
+	CurrentClock   int
+	TargetClock    int
+	MinClock       string
+	MaxClock       string
+	BusyPercentage int
+	GpuBusyPercent int
+	DevfreqLoad    int
+	Temperature    string
 
 	// Power Management
 	Governor          string
@@ -82,34 +87,82 @@ func GetActiveProvider() GPUProvider {
 	return nil
 }
 
-// GetAllProviders returns all registered providers (for testing/debugging)
-func GetAllProviders() []GPUProvider {
-	return ProviderRegistry
-}
-
 // Helper functions for providers
 
 // ReadFile reads a file and returns its content as string
 func ReadFile(path string) string {
-	data, err := exec.Command("cat", path).Output()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return "N/A"
 	}
-	return string(data)
+	return strings.TrimSpace(string(data))
 }
 
 // GetProp reads an Android system property
 func GetProp(prop string) string {
-	cmd := exec.Command("getprop", prop)
-	out, err := cmd.Output()
+	out, err := exec.Command("getprop", prop).Output()
 	if err != nil {
 		return "N/A"
 	}
-	return string(out)
+	return strings.TrimSpace(string(out))
 }
 
 // FileExists checks if a file exists
 func FileExists(path string) bool {
-	_, err := exec.Command("test", "-e", path).Output()
-	return err == nil
+	_, err := os.Stat(path)
+	return !os.IsNotExist(err)
+}
+
+// stubStats returns a GPUStats struct with all fields set to "N/A" or 0,
+// except for Vendor and identity fields populated via GetProp.
+// Used by stub provider implementations (Mali, PowerVR, Immortalis).
+func stubStats(vendor string) GPUStats {
+	return GPUStats{
+		Vendor:            vendor,
+		Model:             vendor + " (TODO)",
+		Platform:          GetProp("ro.board.platform"),
+		VulkanDriver:      GetProp("ro.hardware.vulkan"),
+		EGLDriver:         GetProp("ro.hardware.egl"),
+		OpenGLESVersion:   GetProp("ro.opengles.version"),
+		CurrentClock:      0,
+		TargetClock:       0,
+		MinClock:          "N/A",
+		MaxClock:          "N/A",
+		BusyPercentage:    0,
+		GpuBusyPercent:    0,
+		DevfreqLoad:       0,
+		Temperature:       "N/A",
+		Governor:          "N/A",
+		HWClockGating:     false,
+		IdlePowerCollapse: false,
+		IdleTimer:         "N/A",
+		Throttling:        false,
+		ThermalPwrlevel:   "N/A",
+		NumPwrLevels:      "N/A",
+		MinPwrLevel:       "N/A",
+		MaxPwrLevel:       "N/A",
+		IFPCCount:         "N/A",
+		ResetCount:        "N/A",
+		PreemptCount:      "N/A",
+		PreemptionMode:    "N/A",
+		AvailableFreqs:    []string{},
+		FTPageFault:       "N/A",
+		FTPolicy:          "N/A",
+		FTLongIB:          "N/A",
+		FTHangIntr:        "N/A",
+	}
+}
+
+// parseIntOrZero parses a string to int, returning 0 on failure.
+func parseIntOrZero(s string) int {
+	val, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return 0
+	}
+	return val
+}
+
+// parseIntMHz parses a Hz string and returns MHz (divides by 1,000,000).
+func parseIntMHz(s string) int {
+	return parseIntOrZero(s) / 1_000_000
 }
