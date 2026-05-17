@@ -2,7 +2,8 @@
 set -e
 
 BINARY_NAME="agtop"
-BUILD_DIR="../../build"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BUILD_DIR="$SCRIPT_DIR/../build"
 INSTALL_DIR="/usr/local/bin"
 
 echo "🐹 agtop Build Script"

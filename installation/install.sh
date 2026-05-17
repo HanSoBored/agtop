@@ -42,7 +42,8 @@ if [ "$OS" = "Linux" ]; then
         if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
             SUFFIX="android-aarch64"
         elif [ "$ARCH" = "x86_64" ]; then
-            SUFFIX="android-x86_64"
+            # CI builds linux-x86_64 which works on Android x86_64
+            SUFFIX="linux-x86_64"
         elif [[ "$ARCH" == armv7* ]] || [ "$ARCH" = "arm" ]; then
             SUFFIX="android-armv7"
         else
@@ -91,6 +92,44 @@ if ! curl -f -L -o "$TEMP_DIR/$BINARY_BASE_NAME" "$DOWNLOAD_URL"; then
     echo "❌ Error: Failed to download. The release asset '$TARGET_FILE' might not exist yet."
     exit 1
 fi
+
+# --- CHECKSUM VERIFICATION ---
+echo "🔐 Verifying checksum..."
+
+# Detect sha256 tool
+if command -v sha256sum >/dev/null 2>&1; then
+    sha256_cmd="sha256sum"
+elif command -v shasum >/dev/null 2>&1; then
+    sha256_cmd="shasum -a 256"
+else
+    echo "❌ Error: need either shasum or sha256sum on PATH"
+    exit 1
+fi
+
+# Download checksums file
+CHECKSUMS_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest/download/checksums.txt"
+if ! curl -f -L -o "$TEMP_DIR/checksums.txt" "$CHECKSUMS_URL"; then
+    echo "❌ Error: Failed to download checksums.txt"
+    exit 1
+fi
+
+# Extract expected checksum for our binary
+expected=$(grep " ${TARGET_FILE}" "$TEMP_DIR/checksums.txt" | awk '{print $1}')
+actual=$(eval "$sha256_cmd \"$TEMP_DIR/$BINARY_BASE_NAME\"" | awk '{print $1}')
+
+if [ -z "$expected" ]; then
+    echo "❌ Error: No checksum found for $TARGET_FILE in checksums.txt"
+    exit 1
+fi
+
+if [ "$expected" != "$actual" ]; then
+    echo "❌ Checksum mismatch!"
+    echo "   Expected: $expected"
+    echo "   Actual:   $actual"
+    exit 1
+fi
+
+echo "   Checksum verified ✓"
 
 # --- INSTALLING ---
 echo "📦 Installing to $INSTALL_DIR..."
