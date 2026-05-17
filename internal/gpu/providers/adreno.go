@@ -1,20 +1,21 @@
 package providers
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
 
 // Qualcomm Adreno GPUs
 type AdrenoProvider struct{}
+
 func (p *AdrenoProvider) Name() string {
 	return "Adreno"
 }
 
 // Detect checks if Adreno GPU is present by checking kgsl device path
 func (p *AdrenoProvider) Detect() bool {
-	data := GetProp("ro.hardware.vulkan")
-	vulkanDriver := strings.TrimSpace(data)
+	vulkanDriver := GetProp("ro.hardware.vulkan")
 	return strings.Contains(strings.ToLower(vulkanDriver), "adreno") ||
 		strings.Contains(strings.ToLower(vulkanDriver), "freedreno") ||
 		FileExists("/sys/class/kgsl/kgsl-3d0")
@@ -22,60 +23,55 @@ func (p *AdrenoProvider) Detect() bool {
 
 // GetStats retrieves Adreno GPU statistics
 func (p *AdrenoProvider) GetStats() (GPUStats, error) {
+	// Return error if the critical kgsl device path doesn't exist
+	if !FileExists("/sys/class/kgsl/kgsl-3d0") {
+		return GPUStats{}, fmt.Errorf("kgsl device path /sys/class/kgsl/kgsl-3d0 not found")
+	}
+
 	stats := GPUStats{
 		Vendor: "Adreno",
 
 		// Identity
-		Model:           strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/gpu_model")),
-		Platform:        strings.TrimSpace(GetProp("ro.board.platform")),
-		VulkanDriver:    strings.TrimSpace(GetProp("ro.hardware.vulkan")),
-		EGLDriver:       strings.TrimSpace(GetProp("ro.hardware.egl")),
-		OpenGLESVersion: strings.TrimSpace(GetProp("ro.opengles.version")),
-		MinClock:        strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/min_clock_mhz")),
-		MaxClock:        strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/max_clock_mhz")),
-		Governor:        strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/devfreq/governor")),
-		IdleTimer:       strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/idle_timer")),
-		ThermalPwrlevel: strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/thermal_pwrlevel")),
-		ResetCount:      strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/reset_count")),
-		PreemptCount:    strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/preempt_count")),
-		PreemptionMode:  strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/preemption")),
-		Temperature:     strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/temp")),
-		NumPwrLevels:    strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/num_pwrlevels")),
-		MinPwrLevel:     strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/min_pwrlevel")),
-		MaxPwrLevel:     strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/max_pwrlevel")),
-		IFPCCount:       strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/ifpc_count")),
-		FTPageFault:     strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/ft_pagefault_policy")),
-		FTPolicy:        strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/ft_policy")),
-		FTLongIB:        strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/ft_long_ib_detect")),
-		FTHangIntr:      strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/ft_hang_intr_status")),
+		Model:           ReadFile("/sys/class/kgsl/kgsl-3d0/gpu_model"),
+		Platform:        GetProp("ro.board.platform"),
+		VulkanDriver:    GetProp("ro.hardware.vulkan"),
+		EGLDriver:       GetProp("ro.hardware.egl"),
+		OpenGLESVersion: GetProp("ro.opengles.version"),
+		MinClock:        ReadFile("/sys/class/kgsl/kgsl-3d0/min_clock_mhz"),
+		MaxClock:        ReadFile("/sys/class/kgsl/kgsl-3d0/max_clock_mhz"),
+		Governor:        ReadFile("/sys/class/kgsl/kgsl-3d0/devfreq/governor"),
+		IdleTimer:       ReadFile("/sys/class/kgsl/kgsl-3d0/idle_timer"),
+		ThermalPwrlevel: ReadFile("/sys/class/kgsl/kgsl-3d0/thermal_pwrlevel"),
+		ResetCount:      ReadFile("/sys/class/kgsl/kgsl-3d0/reset_count"),
+		PreemptCount:    ReadFile("/sys/class/kgsl/kgsl-3d0/preempt_count"),
+		PreemptionMode:  ReadFile("/sys/class/kgsl/kgsl-3d0/preemption"),
+		Temperature:     ReadFile("/sys/class/kgsl/kgsl-3d0/temp"),
+		NumPwrLevels:    ReadFile("/sys/class/kgsl/kgsl-3d0/num_pwrlevels"),
+		MinPwrLevel:     ReadFile("/sys/class/kgsl/kgsl-3d0/min_pwrlevel"),
+		MaxPwrLevel:     ReadFile("/sys/class/kgsl/kgsl-3d0/max_pwrlevel"),
+		IFPCCount:       ReadFile("/sys/class/kgsl/kgsl-3d0/ifpc_count"),
+		FTPageFault:     ReadFile("/sys/class/kgsl/kgsl-3d0/ft_pagefault_policy"),
+		FTPolicy:        ReadFile("/sys/class/kgsl/kgsl-3d0/ft_policy"),
+		FTLongIB:        ReadFile("/sys/class/kgsl/kgsl-3d0/ft_long_ib_detect"),
+		FTHangIntr:      ReadFile("/sys/class/kgsl/kgsl-3d0/ft_hang_intr_status"),
 	}
 
 	// Current Clock
-	currClkStr := strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/gpuclk"))
-	if currClkStr != "N/A" {
-		val, _ := strconv.Atoi(currClkStr)
-		stats.CurrentClock = val / 1000000
-	}
+	stats.CurrentClock = parseIntMHz(ReadFile("/sys/class/kgsl/kgsl-3d0/gpuclk"))
 
 	// Target Clock
-	targetClkStr := strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/devfreq/target_freq"))
-	if targetClkStr != "N/A" {
-		val, _ := strconv.Atoi(targetClkStr)
-		stats.TargetClock = val / 1000000
-	}
+	stats.TargetClock = parseIntMHz(ReadFile("/sys/class/kgsl/kgsl-3d0/devfreq/target_freq"))
 
 	// GPU Busy
-	busyStr := strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage"))
+	busyStr := ReadFile("/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage")
 	if busyStr != "N/A" {
-		val, _ := strconv.Atoi(strings.TrimSuffix(busyStr, "%"))
-		stats.GpuBusyPercent = val
+		stats.GpuBusyPercent = parseIntOrZero(strings.TrimSuffix(busyStr, "%"))
 	}
 
 	// Devfreq Load
-	devfreqStr := strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/devfreq/gpu_load"))
+	devfreqStr := ReadFile("/sys/class/kgsl/kgsl-3d0/devfreq/gpu_load")
 	if devfreqStr != "N/A" {
-		val, _ := strconv.Atoi(devfreqStr)
-		stats.DevfreqLoad = val
+		stats.DevfreqLoad = parseIntOrZero(devfreqStr)
 	}
 
 	// Effective BusyPercentage
@@ -86,12 +82,12 @@ func (p *AdrenoProvider) GetStats() (GPUStats, error) {
 	}
 
 	// Boolean flags
-	stats.HWClockGating = strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/hwcg")) == "1"
-	stats.IdlePowerCollapse = strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/ifpc")) == "1"
-	stats.Throttling = strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/throttling")) == "1"
+	stats.HWClockGating = ReadFile("/sys/class/kgsl/kgsl-3d0/hwcg") == "1"
+	stats.IdlePowerCollapse = ReadFile("/sys/class/kgsl/kgsl-3d0/ifpc") == "1"
+	stats.Throttling = ReadFile("/sys/class/kgsl/kgsl-3d0/throttling") == "1"
 
 	// Available frequencies
-	freqsStr := strings.TrimSpace(ReadFile("/sys/class/kgsl/kgsl-3d0/freq_table_mhz"))
+	freqsStr := ReadFile("/sys/class/kgsl/kgsl-3d0/freq_table_mhz")
 	if freqsStr != "N/A" {
 		stats.AvailableFreqs = strings.Fields(freqsStr)
 	}
@@ -100,7 +96,7 @@ func (p *AdrenoProvider) GetStats() (GPUStats, error) {
 	if stats.Temperature != "N/A" {
 		temp, err := strconv.ParseFloat(stats.Temperature, 64)
 		if err == nil && temp > 1000 {
-			stats.Temperature = strconv.FormatFloat(temp/1000.0, 'f', '1', 64) + "°C"
+			stats.Temperature = strconv.FormatFloat(temp/1000.0, 'f', 1, 64) + "°C"
 		} else {
 			stats.Temperature += "°C"
 		}
