@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,13 +47,22 @@ var (
 			Foreground(themeText).
 			Bold(true)
 
-	helpStyle = lipgloss.NewStyle().
-			Foreground(themeOverlay).
-			Italic(true)
-
 	vendorStyle = lipgloss.NewStyle().
 			Foreground(themeSapphire).
 			Bold(true)
+
+	// Pre-defined foreground styles to avoid repeated NewStyle() calls
+	styleRed     = lipgloss.NewStyle().Foreground(themeRed)
+	styleYellow  = lipgloss.NewStyle().Foreground(themeYellow)
+	styleGreen   = lipgloss.NewStyle().Foreground(themeGreen)
+	styleSubtext = lipgloss.NewStyle().Foreground(themeSubtext)
+	styleOverlay = lipgloss.NewStyle().Foreground(themeOverlay)
+)
+
+// Layout breakpoint constants
+const (
+	layoutWide = 110 // 3-column layout
+	layoutMid  = 75  // 2-column top + 1 bottom
 )
 
 type tickMsg time.Time
@@ -103,6 +114,25 @@ func tick() tea.Cmd {
 	})
 }
 
+// colorForPercent returns a theme color based on percentage thresholds.
+func colorForPercent(p int) color.Color {
+	switch {
+	case p > 85:
+		return themeRed
+	case p > 60:
+		return themeYellow
+	case p > 30:
+		return themeGreen
+	default:
+		return themeSubtext
+	}
+}
+
+// styledText renders text with a foreground color using pre-defined styles.
+func styledText(c color.Color, text string) string {
+	return lipgloss.NewStyle().Foreground(c).Render(text)
+}
+
 func (m model) View() tea.View {
 	var v tea.View
 	v.AltScreen = true
@@ -114,79 +144,82 @@ func (m model) View() tea.View {
 		return v
 	}
 
+	if m.width < 40 {
+		v.Content = "Terminal too narrow"
+		return v
+	}
+
 	if m.width == 0 {
 		v.Content = "Initializing..."
 		return v
 	}
 
 	var layout strings.Builder
+	layout.WriteString("\n" + m.renderHeader() + "\n\n")
+	layout.WriteString(m.renderLayout())
+	layout.WriteString("\n\n" + m.renderFooter())
 
-	// --- Top Header ---
+	v.Content = layout.String()
+	return v
+}
+
+// renderHeader builds the top header line with title, vendor badge, and subtitle.
+func (m model) renderHeader() string {
 	vendorBadge := vendorStyle.Render(fmt.Sprintf(" %s ", m.stats.Vendor))
-	header := lipgloss.JoinHorizontal(lipgloss.Center,
+	return lipgloss.JoinHorizontal(lipgloss.Center,
 		titleStyle.Render("GPU MONITOR"),
 		"  ",
 		vendorBadge,
 		"  ",
-		helpStyle.Render("Real-time Monitor"),
+		styleSubtext.Render("Real-time Monitor"),
 	)
-	layout.WriteString("\n" + header + "\n\n")
+}
 
-	// --- Responsive Grid Layout ---
-	var col1, col2, col3 string
-
-	if m.width >= 110 {
-		// 3 Columns (Desktop / Wide)
-		w := (m.width - 2) / 3
-		innerW := w - 4
-		if innerW < 10 {
-			innerW = 10
-		}
-
-		col1 = renderBox(w, m.renderHardwareRows())
-		col2 = renderBox(w, m.renderUsageRows(innerW))
-		col3 = renderBox(w, m.renderPowerRows())
-		layout.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, col1, col2, col3))
-
-	} else if m.width >= 75 {
-		// 2 Columns Top, 1 Bottom (Tablet / Mid-size)
-		w := m.width / 2
-		innerW := w - 4
-		if innerW < 10 {
-			innerW = 10
-		}
-
-		col1 = renderBox(w, m.renderHardwareRows())
-		col2 = renderBox(w, m.renderUsageRows(innerW))
-
-		bottomW := m.width
-		col3 = renderBox(bottomW, m.renderPowerRows())
-
-		topRow := lipgloss.JoinHorizontal(lipgloss.Top, col1, col2)
-		layout.WriteString(lipgloss.JoinVertical(lipgloss.Left, topRow, col3))
-
-	} else {
-		// 1 Column (Mobile / Narrow)
-		w := m.width
-		if w < 30 {
-			w = 30
-		}
-		innerW := w - 4
-		if innerW < 10 {
-			innerW = 10
-		}
-
-		col1 = renderBox(w, m.renderHardwareRows())
-		col2 = renderBox(w, m.renderUsageRows(innerW))
-		col3 = renderBox(w, m.renderPowerRows())
-		layout.WriteString(lipgloss.JoinVertical(lipgloss.Left, col1, col2, col3))
+// renderLayout dispatches to the appropriate column layout based on terminal width.
+func (m model) renderLayout() string {
+	if m.width >= layoutWide {
+		return m.renderThreeColumn()
 	}
+	if m.width >= layoutMid {
+		return m.renderTwoColumn()
+	}
+	return m.renderSingleColumn()
+}
 
-	// --- Footer ---
-	layout.WriteString("\n\n" + helpStyle.Render("[q] Quit  [ctrl+c] Exit "))
+// renderThreeColumn renders a 3-column horizontal layout (wide terminals).
+func (m model) renderThreeColumn() string {
+	w := (m.width - 2) / 3
+	innerW := max(w-4, 10)
+	col1 := renderBox(w, m.renderHardwareRows())
+	col2 := renderBox(w, m.renderUsageRows(innerW))
+	col3 := renderBox(w, m.renderPowerRows())
+	return lipgloss.JoinHorizontal(lipgloss.Top, col1, col2, col3)
+}
 
-	v.Content = layout.String()
-	return v
+// renderTwoColumn renders a 2-column top row + 1 bottom row (mid-size terminals).
+func (m model) renderTwoColumn() string {
+	w := m.width / 2
+	innerW := max(w-4, 10)
+	col1 := renderBox(w, m.renderHardwareRows())
+	col2 := renderBox(w, m.renderUsageRows(innerW))
+	col3 := renderBox(m.width, m.renderPowerRows())
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, col1, col2)
+	return lipgloss.JoinVertical(lipgloss.Left, topRow, col3)
+}
+
+// renderSingleColumn renders a stacked 1-column layout (narrow terminals).
+func (m model) renderSingleColumn() string {
+	w := max(m.width, 30)
+	innerW := max(w-4, 10)
+	col1 := renderBox(w, m.renderHardwareRows())
+	col2 := renderBox(w, m.renderUsageRows(innerW))
+	col3 := renderBox(w, m.renderPowerRows())
+	return lipgloss.JoinVertical(lipgloss.Left, col1, col2, col3)
+}
+
+// renderFooter builds the bottom help line.
+func (m model) renderFooter() string {
+	return styleOverlay.Render("[q] Quit  [ctrl+c] Exit ")
 }
 
 // renderBox applies the border constraints
@@ -268,32 +301,23 @@ func renderSmoothBar(percent int, width int) string {
 		percent = 100
 	}
 
-	color := themeSapphire
-	if percent > 85 {
-		color = themeRed
-	} else if percent > 60 {
-		color = themeYellow
-	} else if percent > 30 {
-		color = themeGreen
-	}
-
+	color := colorForPercent(percent)
 	totalEighths := (percent * width * 8) / 100
 	fullBlocks := totalEighths / 8
 	remainder := totalEighths % 8
 
 	blocks := []string{" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"}
-	style := lipgloss.NewStyle().Foreground(color)
 
 	var sb strings.Builder
-	sb.WriteString(style.Render(strings.Repeat("█", fullBlocks)))
+	sb.WriteString(styledText(color, strings.Repeat("█", fullBlocks)))
 
 	if fullBlocks < width {
-		sb.WriteString(style.Render(blocks[remainder]))
+		sb.WriteString(styledText(color, blocks[remainder]))
 	}
 
 	emptyBlocks := width - fullBlocks - 1
 	if emptyBlocks > 0 {
-		sb.WriteString(lipgloss.NewStyle().Foreground(themeOverlay).Render(strings.Repeat("─", emptyBlocks)))
+		sb.WriteString(styledText(themeOverlay, strings.Repeat("─", emptyBlocks)))
 	}
 
 	return sb.String()
@@ -325,16 +349,8 @@ func renderSparkline(history []int, width int) string {
 			idx = len(blocks) - 1
 		}
 
-		color := themeSapphire
-		if val > 85 {
-			color = themeRed
-		} else if val > 60 {
-			color = themeYellow
-		} else if val > 20 {
-			color = themeGreen
-		}
-
-		spark.WriteString(lipgloss.NewStyle().Foreground(color).Render(blocks[idx]))
+		color := colorForPercent(val)
+		spark.WriteString(styledText(color, blocks[idx]))
 	}
 	return spark.String()
 }
@@ -342,24 +358,26 @@ func renderSparkline(history []int, width int) string {
 func formatBool(b bool, trueStr, falseStr string, trueIsGood bool) string {
 	if b {
 		if trueIsGood {
-			return lipgloss.NewStyle().Foreground(themeGreen).Render(trueStr)
+			return styleGreen.Render(trueStr)
 		}
-		return lipgloss.NewStyle().Foreground(themeRed).Render(trueStr)
+		return styleRed.Render(trueStr)
 	}
 	if trueIsGood {
-		return lipgloss.NewStyle().Foreground(themeRed).Render(falseStr)
+		return styleRed.Render(falseStr)
 	}
-	return lipgloss.NewStyle().Foreground(themeGreen).Render(falseStr)
+	return styleGreen.Render(falseStr)
 }
 
 func formatTemp(t string) string {
 	if t == "N/A" {
-		return lipgloss.NewStyle().Foreground(themeSubtext).Render(t)
+		return styleSubtext.Render(t)
 	}
-	temp := 0.0
-	fmt.Sscanf(t, "%f", &temp)
+	raw := strings.TrimSuffix(t, "°C")
+	temp, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return styleSubtext.Render(t)
+	}
 	style := valueStyle.Copy()
-
 	if temp > 75 {
 		style = style.Foreground(themeRed)
 	} else if temp > 55 {
